@@ -1,14 +1,4 @@
-spark_cluster: openshift
-scheduled_at: "0 20 * * */20:00"
-timezone: UTC
-recurrance: Daily
-recipients:
-  - prasanna.shende@emerson.com
-  - reynaldo.ablay@emerson.com
-  - payal.naik@emerson.com
-  - yogeshwari.ingale@emerson.com
-  - shubham.naik@emerson.com
-  
+
 Cat_Master:
   query: >
    WITH part_view, part_plant, part_document, Document, part_supplier, 
