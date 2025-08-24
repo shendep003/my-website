@@ -1,0 +1,125 @@
+spark_cluster: openshift
+scheduled_at: "0 20 * * */20:00"
+timezone: UTC
+recurrance: Daily
+recipients:
+  - prasanna.shende@emerson.com
+  - reynaldo.ablay@emerson.com
+  - payal.naik@emerson.com
+  - yogeshwari.ingale@emerson.com
+  - shubham.naik@emerson.com
+  
+Cat_Master:
+  query: >
+   WITH part_view, part_plant, part_document, Document, part_supplier, 
+        Supplier, part_series, Series
+        FOR part IN part_view
+          SEARCH part.item_number IN @part_ids 
+          AND part.record_status == "Active" 
+          LET plant_edge = (
+            FOR e IN part_plant
+              FILTER e._from == part._id 
+              AND e.organization == @organization
+              RETURN e
+          )[0]
+          FILTER plant_edge != null
+          LET docEdge = (
+            FOR docEdge IN part_document
+              FILTER docEdge._from == part._id 
+              AND docEdge.organization == plant_edge.organization
+              FOR doc IN Document
+                FILTER doc._id == docEdge._to 
+                AND doc.record_status == "Active"
+                RETURN {
+                  erp_drawing_number: docEdge.erp_drawing_number,
+                  erp_drawing_revision: docEdge.erp_drawing_revision
+                }
+          )[0]
+          LET supplier_info = (
+            FOR supEdge IN part_supplier
+              FILTER supEdge._from == part._id 
+              AND supEdge._is_primary == true 
+              AND supEdge.organization == plant_edge.organization
+              FOR supplier IN Supplier
+                FILTER supplier._id == supEdge._to
+                RETURN supplier
+          )[0]
+          LET series_info = (
+            FOR seriesEdge IN part_series
+              FILTER seriesEdge._from == part._id 
+              AND seriesEdge.organization == plant_edge.organization
+              FOR series IN Series
+                FILTER series._id == seriesEdge._to
+                RETURN series
+          )[0]
+          RETURN {
+            "ORGANIZATION": plant_edge.organization || "",
+            "Product_Number_Vendor": plant_edge.item_vendor_number || "",
+            "CatMastrCat": part.item_number || "",
+            "VIDO_CAT_DRAWING_NO": docEdge != null ? docEdge.erp_drawing_number : "",
+            "DRAWING_VERSION": docEdge != null ? docEdge.erp_drawing_revision : "",
+            "CATALOG_GROUP": series_info != null ? series_info.item_group : "",
+            "Effectivity_date": "",
+            "FULLCAT": plant_edge.`desc` || "",
+            "USER_ITEM_TYPE": plant_edge.planning_mbp_code || "",
+            "ASSY_ITEM_STATUS": plant_edge.item_status || "",
+            "REVISION": plant_edge.revision || "",
+            "SERIES": series_info != null ? series_info.product_line : "",
+            "EAU": plant_edge.eau || "",
+            "AGR": plant_edge.agr || "",
+            "WEIGHT": plant_edge.product_weight || "",
+            "Unit_of_Weight": plant_edge.weight_uom || "",
+            "ON_HAND_INVENTORY": plant_edge.inventory || "",
+            "Primary_Vendor_ID": supplier_info != null ? supplier_info.supplier_id : "",
+            "Primary_Vendor": supplier_info != null ? supplier_info.supplier_name : ""
+          }
+  cores: 2
+  memory: "1"
+  executor_instances: 1
+  schema: >
+    ORGANIZATION VARCHAR(10), Product_Number_Vendor VARCHAR(255), CatMastrCat VARCHAR(255),
+    VIDO_CAT_DRAWING_NO VARCHAR(255), DRAWING_VERSION VARCHAR(255), CATALOG_GROUP VARCHAR(255),
+    Effectivity_date VARCHAR(255), FULLCAT VARCHAR(255), USER_ITEM_TYPE VARCHAR(255),
+    ASSY_ITEM_STATUS VARCHAR(255), REVISION VARCHAR(255), SERIES VARCHAR(255),
+    EAU VARCHAR(10), AGR VARCHAR(10), WEIGHT FLOAT,
+    Unit_of_Weight VARCHAR(255), ON_HAND_INVENTORY VARCHAR(10),
+    Primary_Vendor_ID VARCHAR(255), Primary_Vendor VARCHAR(255)
+  table_name : CATMASTER_dev
+Product_Structure:
+  query: >
+    WITH part_view, part_bom, part_plant
+    FOR bom IN part_bom_view
+        SEARCH bom.parent_item IN @part_ids 
+        AND bom.organization == @organization
+        LET part = (
+            FOR i IN part_view 
+                SEARCH i._id == bom._from 
+                AND i.record_status == "Active"
+                RETURN i
+        )[0]
+        FILTER part != null
+        LET plant_info = (
+            FOR e IN part_plant
+                FILTER e._from == bom._from 
+                AND e.organization == @organization
+                RETURN e
+        )[0]
+        RETURN {
+            "Organization": bom.organization,
+            "Status": plant_info != null ? plant_info.item_status : "",
+            "Parent": bom.parent_item || "",
+            "Child": bom.child_item || "",
+            "ENG_Batch_qty": bom.quantity || 0,
+            "ECN_Recent": bom.ECO || "",
+            "source": plant_info != null ? plant_info.source : ""
+        }
+
+  cores: 2
+  memory: "1"
+  executor_instances: 1
+  schema: >
+    ORGANIZATION VARCHAR(10), STATUS VARCHAR(255),
+    PARENT VARCHAR(255), CHILD VARCHAR(255), 
+    ENG_BATCH_QTY FLOAT, ECN_RECENT VARCHAR(255)
+  table_name : PRODUCTSTRUCTURE_dev
+log_file_location: /tmp/logs
